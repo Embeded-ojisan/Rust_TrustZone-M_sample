@@ -1,0 +1,27 @@
+[build]
+target = "thumbv8m.main-none-eabi"
+rustflags = [
+  "-C", "link-arg=-Tlinker.ld",
+  "-C", "target-feature=+cmse"
+]
+
+[target.thumbv8m.main-none-eabi]
+rustflags = [
+  "-C", "link-arg=-Tlink.x"       # これだけで十分
+]
+
+# secure/Cargo.toml
+[package.metadata.cortex-m-rt]
+# デフォルト memory.x を無効化
+omit-gcc-check = true
+memory.x = "memory.x"
+
+[env]
+# panic* クレートのログを uart0 に流したい場合などはここに追記
+
+[alias]
+secure   = "build -p secure     --release"
+nonsecure   = "build -p nonsecure  --release"
+
+[workspace]
+resolver = "2"

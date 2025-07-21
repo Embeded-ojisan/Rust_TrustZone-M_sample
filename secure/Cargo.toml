@@ -1,0 +1,19 @@
+[package]
+name        = "secure"
+version     = "0.1.0"
+edition     = "2021"
+publish     = false
+autobins    = false # ★ bin 明示
+build = "build.rs"   # ← 追加
+
+[dependencies]
+cortex-m = "0.7.6"
+cortex-m-rt = "0.7"
+panic-halt  = "0.2"
+cortex-m-semihosting = "0.5"   # ← これを追加
+
+[[bin]]
+name = "secure"
+test = false
+bench = false
+path = "src/main.rs"

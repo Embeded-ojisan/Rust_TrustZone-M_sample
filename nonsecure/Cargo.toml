@@ -1,0 +1,20 @@
+[package]
+name         = "nonsecure"
+version      = "0.1.0"
+edition      = "2021"
+publish      = false
+autobins     = false
+build = "build.rs"   # ← 追加
+
+[package.metadata.cortex-m-rt]
+memory.x = "memory.x"
+
+[dependencies]
+cortex-m = "0.7.6"
+cortex-m-rt = "0.7"
+panic-halt  = "0.2"
+cortex-m-semihosting = "0.5"   # ← これを追加
+
+[[bin]]
+name = "nonsecure"
+path = "src/main.rs"
