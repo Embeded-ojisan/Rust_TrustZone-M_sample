@@ -6,7 +6,7 @@ use core::panic::PanicInfo;
 use cortex_m_semihosting::hprintln;
 
 extern "C" {
-    fn entry_function();
+    fn nonsecure_entry_function();
 }
 
 #[panic_handler]
@@ -18,7 +18,7 @@ fn panic(_info: &PanicInfo) -> ! {
 fn main() -> ! {
     hprintln!("Hello from nonsecure!");
 
-    unsafe{ entry_function(); }
+    unsafe{ nonsecure_entry_function(); }
 
     loop {
         hprintln!("Hello from nonsecureloop!");

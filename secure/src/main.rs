@@ -16,7 +16,7 @@ fn panic(_info: &PanicInfo) -> ! {
 
 #[link_section = ".text_nonsecure_entry"]
 #[no_mangle]
-pub extern "cmse-nonsecure-entry" fn entry_function() {
+pub extern "cmse-nonsecure-entry" fn nonsecure_entry_function() {
     hprintln!("Hello cmse-nonsecure-entry!");
 }
 
