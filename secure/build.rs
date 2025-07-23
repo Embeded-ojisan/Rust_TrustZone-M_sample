@@ -3,6 +3,7 @@ use std::env;
 fn main() {
     // 変更検知
     println!("cargo:rerun-if-changed=memory.x");
+    println!("cargo:rerun-if-changed=link.x");
 
     // クレート直下をリンク検索パスに追加
     println!(

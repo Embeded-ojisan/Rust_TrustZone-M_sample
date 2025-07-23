@@ -1,0 +1,13 @@
+[build]
+target = "thumbv8m.main-none-eabi"
+
+[package.metadata.cortex-m-rt]
+# デフォルト memory.x を無効化
+omit-gcc-check = true
+memory.x = "memory.x"
+
+[target.thumbv8m.main-none-eabi]
+rustflags = [
+  "-C", "link-arg=--cmse-implib",
+  "-C", "link-arg=--out-implib=target/thumbv8m.main-none-eabi/release/veneers.o"
+]

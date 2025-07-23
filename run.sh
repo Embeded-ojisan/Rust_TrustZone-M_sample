@@ -2,8 +2,8 @@
 set -eu
 
 # 1) secure / nonsecure をビルド
-cargo build -p secure  --release
-cargo build -p nonsecure --release
+(cd secure && cargo build --release)
+(cd nonsecure && cargo build --release)
 
 # 2) 出力パス
 SEC=target/thumbv8m.main-none-eabi/release/secure

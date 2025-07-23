@@ -5,6 +5,10 @@ use cortex_m_rt::entry;
 use core::panic::PanicInfo;
 use cortex_m_semihosting::hprintln;
 
+extern "C" {
+    fn entry_function();
+}
+
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}

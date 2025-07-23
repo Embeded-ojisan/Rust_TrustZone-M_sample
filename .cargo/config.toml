@@ -2,13 +2,13 @@
 target = "thumbv8m.main-none-eabi"
 rustflags = [
   "-C", "link-arg=-Tlinker.ld",
-  "-C", "target-feature=+cmse"
 ]
 
 [target.thumbv8m.main-none-eabi]
 rustflags = [
   "-C", "link-arg=-Tlink.x"       # これだけで十分
 ]
+
 
 # secure/Cargo.toml
 [package.metadata.cortex-m-rt]

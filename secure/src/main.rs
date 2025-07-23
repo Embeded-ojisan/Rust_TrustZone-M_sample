@@ -2,6 +2,7 @@
 #![no_main]
 
 #![feature(abi_cmse_nonsecure_call)]
+#![feature(cmse_nonsecure_entry)]
 
 use cortex_m_rt::entry;
 use cortex_m_semihosting::hprintln;
@@ -12,6 +13,13 @@ use core::panic::PanicInfo;
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
+
+/*
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn entry_function() {
+    hprintln!("Hello cmse-nonsecure-entry!");
+}
+*/
 
 //────────────────── SAU / MPU (stub) ──────────────────
 /// Secure Attribution Unit 初期化（Flash + SRAM を Non-Secure に）
