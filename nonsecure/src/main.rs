@@ -18,6 +18,8 @@ fn panic(_info: &PanicInfo) -> ! {
 fn main() -> ! {
     hprintln!("Hello from nonsecure!");
 
+    unsafe{ entry_function(); }
+
     loop {
         hprintln!("Hello from nonsecureloop!");
         for _ in 0..8_000_000 { cortex_m::asm::nop() } // dummy workload

@@ -14,12 +14,11 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-/*
+#[link_section = ".text_nonsecure_entry"]
 #[no_mangle]
 pub extern "cmse-nonsecure-entry" fn entry_function() {
     hprintln!("Hello cmse-nonsecure-entry!");
 }
-*/
 
 //────────────────── SAU / MPU (stub) ──────────────────
 /// Secure Attribution Unit 初期化（Flash + SRAM を Non-Secure に）
