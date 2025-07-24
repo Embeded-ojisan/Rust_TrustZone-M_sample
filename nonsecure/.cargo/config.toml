@@ -3,5 +3,5 @@ target = "thumbv8m.main-none-eabi"
 
 [target.thumbv8m.main-none-eabi]
 rustflags = [
-  "-C", "link-arg=target/thumbv8m.main-none-eabi/release/veneers.o"
+  "-C", "link-arg=target/thumbv8m.main-none-eabi/release/veneers.o",
 ]
