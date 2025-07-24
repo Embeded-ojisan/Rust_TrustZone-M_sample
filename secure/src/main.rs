@@ -29,6 +29,9 @@ unsafe fn HardFault(ef: &ExceptionFrame) -> ! {
     hprintln!("pc  = {:#010X}", ef.pc());
     hprintln!("xpsr= {:#010X}", ef.xpsr());
 
+    let sfsr = core::ptr::read_volatile(0xE000_EDE4 as *const u32);
+    hprintln!("SFSR={:08X}", sfsr);   // 0b0000_1000 → INVSTATE
+
     loop {}
 }
 
@@ -59,10 +62,12 @@ pub unsafe extern "C" fn systick_handler() {
 
     core::arch::asm!("dsb sy; isb sy");
 
-    // ★ 3. bxns で実行
-    core::arch::asm!(
-        "bxns {0}",
-        in(reg) func as usize
+   core::arch::asm!(
+    "blxns {func}",
+    func = in(reg) func as usize,
+    // LR を clobber するので書いておくと親切
+    lateout("lr") _,
+    options(nostack)
     );
 
 
@@ -98,24 +103,39 @@ use cortex_m::peripheral::sau::Ctrl;
 pub unsafe fn init_sau_mpu() {
     let sau = &*cortex_m::peripheral::SAU::PTR;
 
-    // Region 0: .ns_callable セクション（NSC属性つき）
-    sau.rnr.write(Rnr(0));
-    sau.rbar.write(Rbar(0x00200800));
-    sau.rlar.write(Rlar(0x002008FF | SAU_RLAR_ENABLE | SAU_RLAR_NSC));  // ← ✔ NSC つけるのはここだけ！
+    const SAU_RLAR_ENABLE: u32 = 1;
+    const SAU_RLAR_NSC:    u32 = 1 << 1;
 
-    // Region 1: 残りのFlash（Non-Secure, NSCなし）
-    sau.rnr.write(Rnr(1));
-    sau.rbar.write(Rbar(0x00200900));
-    sau.rlar.write(Rlar(0x0027FFFF | SAU_RLAR_ENABLE));  // ← ❌ NSCは絶対につけない
+    #[inline(always)]
+    const fn limit(addr: u32) -> u32 {
+        // 32 byte 境界に丸める（bit[4:0]=11111 を強制）
+        (addr & !0x1F) | SAU_RLAR_ENABLE
+    }
 
-    // Region 2: SRAM（Non-Secure, NSCなし）
-    sau.rnr.write(Rnr(2));
-    sau.rbar.write(Rbar(0x20000000));
-    sau.rlar.write(Rlar(0x2002FFFF | SAU_RLAR_ENABLE));  // ← ❌ NSCは絶対につけない
+    unsafe {
+        // ── Region 0 : .ns_callable （NSC 付き）
+        sau.rnr.write(Rnr(0));
+        sau.rbar.write(Rbar(0x0020_0800));
+        sau.rlar.write(Rlar(limit(0x0020_08FF) | SAU_RLAR_NSC));
 
-    // SAU有効化
-    sau.ctrl.write(Ctrl(1));
-    core::arch::asm!("dsb sy; isb sy");
+        // ── Region 1 : 残りの Flash（NS, NSC なし）
+        sau.rnr.write(Rnr(1));
+        sau.rbar.write(Rbar(0x0020_0000));          // ★ 先頭を 0x0020_0000 に!
+        sau.rlar.write(Rlar(limit(0x0020_07FF)));   // NSC フラグは付けない
+
+        // ── Region 2 : SRAM（NS, NSC なし）
+        sau.rnr.write(Rnr(2));
+        sau.rbar.write(Rbar(0x0020_0900));
+        sau.rlar.write(Rlar(limit(0x2002_FFFF)));      // ✘ NSC
+
+        // ── Region 1 : 残りの Flash（NS, NSC なし）
+        sau.rnr.write(Rnr(3));
+        sau.rbar.write(Rbar(0x0020_0000));          // ★ 先頭を 0x0020_0000 に!
+        sau.rlar.write(Rlar(limit(0x0027_FFFF)));   // NSC フラグは付けない
+
+        sau.ctrl.write(Ctrl(1));   // SAU enable
+        core::arch::asm!("dsb sy; isb sy");
+    }
 }
 
 #[inline(never)]
