@@ -1,12 +1,16 @@
+/* secure/memory.x (MPS2-AN521 / minimal PoC) */
 MEMORY
 {
-  FLASH : ORIGIN = 0x10000000, LENGTH = 256K
-  RAM   : ORIGIN = 0x38000000, LENGTH = 128K
+  /* QEMU reset expects vectors at Flash base (0x1000_0000) */
+  FLASH : ORIGIN = 0x10000000, LENGTH = 512K
+
+  /* Secure RAM (TF-M map showed 0x3800_0000 .. but for PoC we keep it) */
+  RAM   : ORIGIN = 0x38000000, LENGTH = 1M
 }
 
 SECTIONS
 {
-  /* Veneerエリア：vector_table の直後＝0x10000800 (2KBベクタの場合) */
+  /* vector_table直後付近にNSC veneerを置く（既存構造を維持） */
   .gnu.sgstubs 0x10000800 :
   {
     *(.gnu.sgstubs*)
@@ -16,9 +20,7 @@ SECTIONS
   {
     *(.text_nonsecure_entry*)
   } > FLASH
-
-  /* ...（RAM, bss, dataなどはcortex-m-rtのデフォルトにまかせる）... */
 }
 
-/* cortex-m-rtに「.textセクション開始アドレスはここ」と教える */
+/* cortex-m-rtに text の開始を教える */
 PROVIDE(_stext = 0x10000900);
