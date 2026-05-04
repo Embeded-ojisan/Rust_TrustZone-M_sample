@@ -1,9 +1,7 @@
-use std::env;
-use std::fs;
-use std::path::PathBuf;
-
 fn main() {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    fs::copy("memory.x", out_dir.join("memory.x")).unwrap();
-    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    // リンカスクリプトの探索パスを -L で渡す
+    println!("cargo:rustc-link-arg=-L{}", manifest_dir);
+    println!("cargo:rustc-link-arg=-Tlink.ld");
+    println!("cargo:rerun-if-changed=link.ld");
 }

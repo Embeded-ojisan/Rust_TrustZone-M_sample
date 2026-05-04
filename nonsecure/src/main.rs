@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 
-use cortex_m_rt::entry;
 use core::panic::PanicInfo;
 use cortex_m_semihosting::hprintln;
 
@@ -14,7 +13,6 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-#[entry]
 fn main() -> ! {
     hprintln!("Hello from nonsecure!");
 

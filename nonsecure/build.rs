@@ -1,10 +1,6 @@
-use std::env;
-
 fn main() {
-    // クレート直下をリンク検索パスに追加
-    println!(
-        "cargo:rustc-link-search=native={}",
-        env::var("CARGO_MANIFEST_DIR").unwrap()
-    );
-
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    println!("cargo:rustc-link-arg=-L{}", manifest_dir);
+    println!("cargo:rustc-link-arg=-Tlink.ld");
+    println!("cargo:rerun-if-changed=link.ld");
 }
