@@ -5,6 +5,8 @@ MEMORY
   RAM   (rwx) : ORIGIN = 0x30000000, LENGTH = 128K  /* Secure RAM */
 }
 
+ENTRY(Reset);
+
 SECTIONS
 {
 .vector_table ORIGIN(FLASH) :
@@ -15,18 +17,20 @@ SECTIONS
 
   .text :
   {
-    *(.vector_table.reset_vector)
     *(.text .text.*)
   } > FLASH
 
   .rodata : { *(.rodata .rodata.*) } > FLASH
 
-  .ARM.exidx :
+  /DISCARD/ :
   {
-    *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-  } > FLASH
+    /* Unused exception related info that only wastes space */
+    *(.ARM.exidx);
+    *(.ARM.exidx.*);
+    *(.ARM.extab.*);
+  }
 
-  .data : AT(LOADADDR(.ARM.exidx) + SIZEOF(.ARM.exidx))
+  .data : AT(ADDR(.rodata) + SIZEOF(.rodata))
   {
     __sdata = .;
     *(.data .data.*)

@@ -113,11 +113,17 @@ pub unsafe extern "C" fn hard_fault_handler() -> ! {
 #[no_mangle]
 pub unsafe extern "C" fn hard_fault_inner(frame: *const ExceptionFrame) -> ! {
     let f = &*frame;
+/*
     let _ = hprintln!(
         "[EXCEPTION] HardFault\n  PC=0x{:08X} LR=0x{:08X} xPSR=0x{:08X}\n  R0=0x{:08X} R1=0x{:08X} R2=0x{:08X} R3=0x{:08X}",
         f.pc, f.lr, f.xpsr,
         f.r0, f.r1, f.r2, f.r3
     );
+*/
+    hprintln!("[EXCEPTION] HardFault");
+    hprintln!("  PC=0x{:08X}", f.pc);
+    hprintln!("  LR=0x{:08X}", f.lr);
+
     loop {}
 }
 
@@ -193,6 +199,7 @@ pub unsafe extern "C" fn pend_sv_handler() -> ! {
 
 //────────────────── NSC エントリ ──────────────────
 #[no_mangle]
+#[link_section = ".text_nonsecure_entry"]
 pub extern "cmse-nonsecure-entry" fn nonsecure_entry_function() {
     let _ = hprintln!("Hello from secure (cmse-nonsecure-entry)!");
 }

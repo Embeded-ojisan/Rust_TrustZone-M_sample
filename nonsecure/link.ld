@@ -14,7 +14,6 @@ SECTIONS
 
   .text :
   {
-    *(.vector_table.reset_vector)
     *(.text .text.*)
   } > FLASH
 
