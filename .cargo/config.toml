@@ -8,7 +8,7 @@ rustflags = [
 rustflags = [
   "-C", "link-arg=-Tlink.x"       # これだけで十分
 ]
-
+linker = "arm-none-eabi-ld"
 
 # secure/Cargo.toml
 [package.metadata.cortex-m-rt]

@@ -18,7 +18,7 @@ fn panic(_info: &PanicInfo) -> ! {
  * - secure 側リンク時に --cmse-implib で veneers.o が生成され、
  *   nonsecure 側がそれをリンクして呼べるようになる想定
  */
-#[link_section = ".text_nonsecure_entry"]
+//#[link_section = ".text_nonsecure_entry"]
 #[no_mangle]
 pub extern "cmse-nonsecure-entry" fn nonsecure_entry_function() {
     // NS から呼ばれたらここが動く

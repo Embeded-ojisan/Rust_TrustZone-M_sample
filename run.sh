@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -eu
 
-cd /home/shuhei/dev/Rust_TrustZone-M_sample
 rustup override set nightly-2025-07-15
 
 # 1) secure / nonsecure をビルド

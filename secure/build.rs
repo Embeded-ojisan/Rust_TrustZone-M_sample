@@ -1,15 +1,9 @@
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 
 fn main() {
-    // 変更検知
-    println!("cargo:rerun-if-changed=memory.x");
-    println!("cargo:rerun-if-changed=link.x");
-
-    // クレート直下をリンク検索パスに追加
-    println!(
-        "cargo:rustc-link-search=native={}",
-        env::var("CARGO_MANIFEST_DIR").unwrap()
-    );
-
-    // ここでは memory.x を -T では渡さない！
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    fs::copy("memory.x", out_dir.join("memory.x")).unwrap();
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
 }
