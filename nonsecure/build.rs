@@ -9,7 +9,6 @@ fn main() {
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let parent_parent_dir = out_dir.parent().unwrap().parent().unwrap().to_str().unwrap();
     println!("cargo:rustc-link-search=native={}", parent_parent_dir);
-    println!("cargo:rustc-link-lib=static=secure_gateway"); // ← これを追加
-
+    println!("cargo:rustc-link-lib=static=secure_gateway");
     println!("cargo:rerun-if-changed=link.ld");
 }

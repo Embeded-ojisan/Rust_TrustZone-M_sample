@@ -1,8 +1,8 @@
 MEMORY
 {
-  FLASH (rx)  : ORIGIN = 0x10000000, LENGTH = 522K  /* Secure Flash (NSC領域含む) */
-  NSC   (rx)  : ORIGIN = 0x10080800, LENGTH = 2K    /* NSC veneer: SAU Region2に一致 */
-  RAM   (rwx) : ORIGIN = 0x30000000, LENGTH = 128K  /* Secure RAM */
+  FLASH (rx)  : ORIGIN = 0x10000000, LENGTH = 522K
+  NSC   (rx)  : ORIGIN = 0x10080800, LENGTH = 2K
+  RAM   (rwx) : ORIGIN = 0x30000000, LENGTH = 128K
 }
 
 ENTRY(Reset);
@@ -11,8 +11,8 @@ SECTIONS
 {
 .vector_table ORIGIN(FLASH) :
   {
-    LONG(ORIGIN(RAM) + LENGTH(RAM));        /* MSP初期値 */
-    KEEP(*(.vector_table.reset_vector))     /* Reset + EXCEPTIONS配列 */
+    LONG(ORIGIN(RAM) + LENGTH(RAM));
+    KEEP(*(.vector_table.reset_vector))
   } > FLASH
 
   .text :
@@ -47,7 +47,6 @@ SECTIONS
     __ebss = .;
   } > RAM
 
-  /* NSC veneer: SAU Region2 (0x10080800-0x10080FFF) に固定 */
   .gnu.sgstubs ORIGIN(NSC) :
   {
     __sgstubs_start = .;
