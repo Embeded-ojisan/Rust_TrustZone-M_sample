@@ -214,6 +214,26 @@ pub extern "cmse-nonsecure-entry" fn nonsecure_entry_function() {
     let _ = hprintln!("Hello from secure (cmse-nonsecure-entry)!");
 }
 
+type NsCallback = unsafe extern "cmse-nonsecure-call" fn();
+
+static mut NS_CALLBACK: Option<NsCallback> = None;
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn register_ns_callback(func: unsafe extern "C" fn()) {
+    let func2: unsafe extern "cmse-nonsecure-call" fn() =
+        unsafe { core::mem::transmute(func) };
+    unsafe { NS_CALLBACK = Some(func2) };
+}
+
+#[no_mangle]
+pub extern "cmse-nonsecure-entry" fn call_ns_function_from_secure() {
+    unsafe {
+        if let Some(f) = NS_CALLBACK {
+            f();
+        }
+    }
+}
+
 //────────────────── SAU ──────────────────
 pub unsafe fn init_sau() {
     use cortex_m::peripheral::sau::{Ctrl, Rbar, Rlar, Rnr};
@@ -259,9 +279,6 @@ pub unsafe fn init_sau() {
     // ENABLE=1 (bit0), ALLNS=0 (bit1)
     sau.ctrl.write(Ctrl(0x1));
     core::arch::asm!("dsb sy; isb sy");
-
-    hprintln!("\nAfter init_sau()");
-    check_memory();
 
     for r in 0..4u32 {
         sau.rnr.write(Rnr(r));
@@ -376,8 +393,6 @@ pub unsafe fn init_mpc() {
     );
 
     core::arch::asm!("dsb sy; isb sy");
-    hprintln!("\nAfter MPC SSRAM1 NS Flash");
-    check_memory();
 
     // ── NS RAM: 0x2810_0000〜0x2817_FFFF ────────────────────────────────────
     // SSRAM2 の NS バスアドレス先頭 = 0x2800_0000 (AN521 Table 3-4 Row8)
@@ -391,13 +406,9 @@ pub unsafe fn init_mpc() {
     );
 
     core::arch::asm!("dsb sy; isb sy");
-    hprintln!("\nAfter MPC SSRAM2 NS RAM");
-    check_memory();
 
     let _ = hprintln!("[MPC] init done");
 
-    hprintln!("\nAfter init_mpc()");
-    check_memory();
 }
 
 //────────────────── SPC ──────────────────
@@ -442,13 +453,10 @@ fn main() -> ! {
         core::ptr::write_volatile(0xE000_ED08 as *mut u32, 0x1000_0000);
     }
 
-    hprintln!("\nFirst Step");
-    check_memory();
-
     let _ = hprintln!("Hello from secure! (mps2-an521)");
     unsafe { enable_faults(); }
 
-    hprintln!("\nBefore init()");
+    hprintln!("\nBefore initialize memory");
     check_memory();
 
     // 初期化順序: SPC → MPC → SAU
@@ -456,7 +464,7 @@ fn main() -> ! {
     unsafe { init_mpc(); }
     unsafe { init_sau(); }
 
-    hprintln!("\nAfter init()");
+    hprintln!("\nAfter initialize memory");
     check_memory();
 
     go_to_nonsecure();

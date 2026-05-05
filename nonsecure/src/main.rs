@@ -12,6 +12,8 @@ extern "C" {
     static mut __sbss:  u32;
     static mut __ebss:  u32;
     fn nonsecure_entry_function();
+    fn register_ns_callback(func: unsafe extern "C" fn());
+    fn call_ns_function_from_secure();
 }
 
 #[link_section = ".vector_table.reset_vector"]
@@ -46,9 +48,20 @@ pub unsafe extern "C" fn hard_fault_handler() -> ! {
     loop {}
 }
 
+#[no_mangle]
+pub extern "C" fn ns_callback() {
+    hprintln!("Hello from secure by calling nonsecure function call from secure!");
+}
+
 fn main() -> ! {
     hprintln!("Hello from nonsecure!");
+    
     unsafe { nonsecure_entry_function(); }
+
+    unsafe { register_ns_callback(ns_callback); }
+
+    unsafe { call_ns_function_from_secure(); }
+
     loop {
         hprintln!("Hello from nonsecureloop!");
         for _ in 0..8_000_000 { cortex_m::asm::nop() }
