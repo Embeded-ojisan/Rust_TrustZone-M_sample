@@ -11,7 +11,7 @@ fn main() {
     let parent_parent_dir = out_dir.parent().unwrap().parent().unwrap().to_str().unwrap();
 
     println!("cargo:rustc-link-arg=--cmse-implib");
-    println!("cargo:rustc-link-arg=--out-implib={}/secure_gateway.a", parent_parent_dir);
+    println!("cargo:rustc-link-arg=--out-implib={}/libsecure_gateway.a", parent_parent_dir);
 
     println!("cargo:rerun-if-changed=link.ld");
 }
