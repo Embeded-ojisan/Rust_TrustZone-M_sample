@@ -1,7 +1,7 @@
 MEMORY
 {
-  FLASH (rx)  : ORIGIN = 0x10000000, LENGTH = 522K
-  NSC   (rx)  : ORIGIN = 0x10080800, LENGTH = 2K
+  FLASH (rx)  : ORIGIN = 0x10000000, LENGTH = 512K
+  NSC   (rx)  : ORIGIN = 0x10080000, LENGTH = 2K
   RAM   (rwx) : ORIGIN = 0x30000000, LENGTH = 128K
 }
 
@@ -54,5 +54,3 @@ SECTIONS
     __sgstubs_end = .;
   } > NSC
 }
-
-PROVIDE(nonsecure_entry_function = 0x10080800);
