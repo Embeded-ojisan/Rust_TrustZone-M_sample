@@ -199,7 +199,6 @@ pub unsafe extern "C" fn pend_sv_handler() -> ! {
 
 //────────────────── NSC エントリ ──────────────────
 #[no_mangle]
-#[link_section = ".text_nonsecure_entry"]
 pub extern "cmse-nonsecure-entry" fn nonsecure_entry_function() {
     let _ = hprintln!("Hello from secure (cmse-nonsecure-entry)!");
 }

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -eu
 
+rm -f qemu_debug.log
+rm -rf ./temp && mkdir -p ./temp
+
 rustup override set nightly-2025-07-15
 
 # 1) secure / nonsecure をビルド

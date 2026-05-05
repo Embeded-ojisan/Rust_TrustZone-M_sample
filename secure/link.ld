@@ -55,3 +55,5 @@ SECTIONS
     __sgstubs_end = .;
   } > NSC
 }
+
+PROVIDE(nonsecure_entry_function = 0x10080800);

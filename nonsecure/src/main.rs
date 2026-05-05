@@ -11,7 +11,7 @@ extern "C" {
     static     __sidata: u32;
     static mut __sbss:  u32;
     static mut __ebss:  u32;
-//    fn nonsecure_entry_function();
+    fn nonsecure_entry_function();
 }
 
 #[link_section = ".vector_table.reset_vector"]
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn hard_fault_handler() -> ! {
 
 fn main() -> ! {
     hprintln!("Hello from nonsecure!");
-//    unsafe { nonsecure_entry_function(); }
+    unsafe { nonsecure_entry_function(); }
     loop {
         hprintln!("Hello from nonsecureloop!");
         for _ in 0..8_000_000 { cortex_m::asm::nop() }
