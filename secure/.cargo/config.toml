@@ -6,4 +6,3 @@ rustflags = [
   "-C", "link-arg=--cmse-implib",
   "-C", "link-arg=--out-implib=target/thumbv8m.main-none-eabi/release/veneers.o"
 ]
-linker = "arm-none-eabi-ld"
