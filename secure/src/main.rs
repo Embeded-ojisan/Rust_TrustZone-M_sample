@@ -8,7 +8,6 @@ use cortex_m_semihosting::hprintln;
 use core::panic::PanicInfo;
 use core::ptr;
 
-// .data / .bss のリンカシンボル
 unsafe extern "C" {
     static mut __sdata: u32;
     static mut __edata: u32;
@@ -18,41 +17,25 @@ unsafe extern "C" {
 }
 
 //────────────────── ベクタテーブル ──────────────────
-/// Cortex-M33 例外ベクタテーブル
-/// Reset後にCPUが参照する固定レイアウト
 #[link_section = ".vector_table.reset_vector"]
 #[no_mangle]
 pub static EXCEPTIONS: [Option<unsafe extern "C" fn()>; 15] = unsafe {
     [
-        // 0: Reset（Resetハンドラは別途先頭に配置）
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(Reset)),
-        // 1: NMI
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(nmi_handler)),
-        // 2: HardFault
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(hard_fault_handler)),
-        // 3: MemManage
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(mem_manage_handler)),
-        // 4: BusFault
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(bus_fault_handler)),
-        // 5: UsageFault
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(usage_fault_handler)),
-        // 6: SecureFault（M33 TrustZone固有）
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(secure_fault_handler)),
-        // 7-10: 予約済み
         None,
         None,
         None,
         None,
-        // 11: SVCall
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(svcall_handler)),
-        // 12: DebugMon
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(debug_mon_handler)),
-        // 13: 予約済み
         None,
-        // 14: PendSV
         Some(core::mem::transmute::<unsafe extern "C" fn() -> !, unsafe extern "C" fn()>(pend_sv_handler)),
-        // 15: SysTick
-        // Some(sys_tick_handler),
     ]
 };
 
@@ -73,10 +56,14 @@ pub unsafe extern "C" fn Reset() -> ! {
     main();
 }
 
-//────────────────── 例外ハンドラ ──────────────────
+//────────────────── 例外有効化 ──────────────────
+unsafe fn enable_faults() {
+    const SCB_SHCSR: *mut u32 = 0xE000_ED24 as *mut u32;
+    let val = core::ptr::read_volatile(SCB_SHCSR);
+    core::ptr::write_volatile(SCB_SHCSR, val | (1 << 16) | (1 << 17) | (1 << 18) | (1 << 19));
+}
 
-/// ExceptionFrame: スタックに自動退避されるレジスタ群
-/// HardFault等でPCやLRを読み出すために使う
+//────────────────── 例外ハンドラ ──────────────────
 #[repr(C)]
 pub struct ExceptionFrame {
     pub r0:   u32,
@@ -84,8 +71,8 @@ pub struct ExceptionFrame {
     pub r2:   u32,
     pub r3:   u32,
     pub r12:  u32,
-    pub lr:   u32,  // Link Register（呼び出し元）
-    pub pc:   u32,  // 例外発生アドレス
+    pub lr:   u32,
+    pub pc:   u32,
     pub xpsr: u32,
 }
 
@@ -95,13 +82,11 @@ pub unsafe extern "C" fn nmi_handler() -> ! {
     loop {}
 }
 
-/// HardFaultはスタックポインタ経由でExceptionFrameを読む
 #[no_mangle]
 #[unsafe(naked)]
 pub unsafe extern "C" fn hard_fault_handler() -> ! {
-    // MSPからExceptionFrameのアドレスをr0に渡してRust関数へ
     core::arch::naked_asm!(
-        "tst lr, #4",           // EXC_RETURN bit2: 0=MSP, 1=PSP
+        "tst lr, #4",
         "ite eq",
         "mrseq r0, msp",
         "mrsne r0, psp",
@@ -113,68 +98,95 @@ pub unsafe extern "C" fn hard_fault_handler() -> ! {
 #[no_mangle]
 pub unsafe extern "C" fn hard_fault_inner(frame: *const ExceptionFrame) -> ! {
     let f = &*frame;
+    let cfsr = core::ptr::read_volatile(0xE000_ED28 as *const u32);
+    let hfsr = core::ptr::read_volatile(0xE000_ED2C as *const u32);
     let _ = hprintln!(
-        "[EXCEPTION] HardFault\n  PC=0x{:08X} LR=0x{:08X} xPSR=0x{:08X}\n  R0=0x{:08X} R1=0x{:08X} R2=0x{:08X} R3=0x{:08X}",
+        "[EXCEPTION] HardFault\n  PC=0x{:08X} LR=0x{:08X} xPSR=0x{:08X}\n  R0=0x{:08X} R1=0x{:08X} R2=0x{:08X} R3=0x{:08X}\n  CFSR=0x{:08X} HFSR=0x{:08X}",
         f.pc, f.lr, f.xpsr,
-        f.r0, f.r1, f.r2, f.r3
+        f.r0, f.r1, f.r2, f.r3,
+        cfsr, hfsr
     );
-    
-    hprintln!("[EXCEPTION] HardFault");
-    hprintln!("  PC=0x{:08X}", f.pc);
-    hprintln!("  LR=0x{:08X}", f.lr);
-
     loop {}
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mem_manage_handler() -> ! {
-    // MMFSR: SCB->CFSR[7:0]
-    let cfsr = core::ptr::read_volatile(0xE000_ED28 as *const u32);
+    let cfsr  = core::ptr::read_volatile(0xE000_ED28 as *const u32);
     let mmfsr = (cfsr & 0xFF) as u8;
     let mmfar = core::ptr::read_volatile(0xE000_ED34 as *const u32);
-    let _ = hprintln!(
-        "[EXCEPTION] MemManage MMFSR=0x{:02X} MMFAR=0x{:08X}",
-        mmfsr, mmfar
-    );
+    let mmfar_valid = (mmfsr & 0x80) != 0;
+    let _ = hprintln!("[EXCEPTION] MemManageFault");
+    let _ = hprintln!("  MMFSR = 0x{:02X}", mmfsr);
+    if (mmfsr & 0x01) != 0 { let _ = hprintln!("  IACCVIOL  : instruction fetch violation"); }
+    if (mmfsr & 0x02) != 0 { let _ = hprintln!("  DACCVIOL  : data access violation"); }
+    if (mmfsr & 0x08) != 0 { let _ = hprintln!("  MUNSTKERR : unstack error on exception return"); }
+    if (mmfsr & 0x10) != 0 { let _ = hprintln!("  MSTKERR   : stack error on exception entry"); }
+    if (mmfsr & 0x20) != 0 { let _ = hprintln!("  MLSPERR   : lazy FP state save error"); }
+    if mmfar_valid {
+        let _ = hprintln!("  MMFAR     : 0x{:08X}  <-- fault address", mmfar);
+    } else {
+        let _ = hprintln!("  MMFAR     : invalid (MMARVALID=0)");
+    }
     loop {}
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn bus_fault_handler() -> ! {
-    // BFSR: SCB->CFSR[15:8]
     let cfsr = core::ptr::read_volatile(0xE000_ED28 as *const u32);
     let bfsr = ((cfsr >> 8) & 0xFF) as u8;
     let bfar = core::ptr::read_volatile(0xE000_ED38 as *const u32);
-    let _ = hprintln!(
-        "[EXCEPTION] BusFault BFSR=0x{:02X} BFAR=0x{:08X}",
-        bfsr, bfar
-    );
+    let bfar_valid = (bfsr & 0x80) != 0;
+    let _ = hprintln!("[EXCEPTION] BusFault");
+    let _ = hprintln!("  BFSR = 0x{:02X}", bfsr);
+    if (bfsr & 0x01) != 0 { let _ = hprintln!("  IBUSERR    : instruction fetch bus error"); }
+    if (bfsr & 0x02) != 0 { let _ = hprintln!("  PRECISERR  : precise data bus error"); }
+    if (bfsr & 0x04) != 0 { let _ = hprintln!("  IMPRECISERR: imprecise data bus error"); }
+    if (bfsr & 0x08) != 0 { let _ = hprintln!("  UNSTKERR   : unstack error on exception return"); }
+    if (bfsr & 0x10) != 0 { let _ = hprintln!("  STKERR     : stack error on exception entry"); }
+    if (bfsr & 0x20) != 0 { let _ = hprintln!("  LSPERR     : lazy FP state save error"); }
+    if bfar_valid {
+        let _ = hprintln!("  BFAR       : 0x{:08X}  <-- fault address", bfar);
+    } else {
+        let _ = hprintln!("  BFAR       : invalid (BFARVALID=0)");
+    }
     loop {}
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn usage_fault_handler() -> ! {
-    // UFSR: SCB->CFSR[31:16]
     let cfsr = core::ptr::read_volatile(0xE000_ED28 as *const u32);
     let ufsr = ((cfsr >> 16) & 0xFFFF) as u16;
-    let _ = hprintln!(
-        "[EXCEPTION] UsageFault UFSR=0x{:04X}",
-        ufsr
-    );
+    let _ = hprintln!("[EXCEPTION] UsageFault");
+    let _ = hprintln!("  UFSR = 0x{:04X}", ufsr);
+    if (ufsr & 0x0001) != 0 { let _ = hprintln!("  UNDEFINSTR: undefined instruction"); }
+    if (ufsr & 0x0002) != 0 { let _ = hprintln!("  INVSTATE  : invalid EPSR state"); }
+    if (ufsr & 0x0004) != 0 { let _ = hprintln!("  INVPC     : invalid PC on exception return"); }
+    if (ufsr & 0x0008) != 0 { let _ = hprintln!("  NOCP      : no coprocessor"); }
+    if (ufsr & 0x0010) != 0 { let _ = hprintln!("  STKOF     : stack overflow"); }
+    if (ufsr & 0x0100) != 0 { let _ = hprintln!("  UNALIGNED : unaligned access"); }
+    if (ufsr & 0x0200) != 0 { let _ = hprintln!("  DIVBYZERO : divide by zero"); }
     loop {}
 }
 
-/// SecureFault: M33 TrustZone固有
-/// SAU違反・NSからSecure領域への不正アクセス等
 #[no_mangle]
 pub unsafe extern "C" fn secure_fault_handler() -> ! {
-    // SFSR: 0xE000EDE4、SFAR: 0xE000EDE8
     let sfsr = core::ptr::read_volatile(0xE000_EDE4 as *const u32);
     let sfar = core::ptr::read_volatile(0xE000_EDE8 as *const u32);
-    let _ = hprintln!(
-        "[EXCEPTION] SecureFault SFSR=0x{:08X} SFAR=0x{:08X}",
-        sfsr, sfar
-    );
+    let sfar_valid = (sfsr & 0x40) != 0;
+    let _ = hprintln!("[EXCEPTION] SecureFault");
+    let _ = hprintln!("  SFSR = 0x{:08X}", sfsr);
+    if (sfsr & 0x01) != 0 { let _ = hprintln!("  INVEP  : invalid entry point (NS->S 非NSC経由)"); }
+    if (sfsr & 0x02) != 0 { let _ = hprintln!("  INVIS  : invalid integrity signature"); }
+    if (sfsr & 0x04) != 0 { let _ = hprintln!("  INVER  : invalid exception return"); }
+    if (sfsr & 0x08) != 0 { let _ = hprintln!("  AUVIOL : attribution unit violation (SAU/IDAU)"); }
+    if (sfsr & 0x10) != 0 { let _ = hprintln!("  INVTRAN: invalid transition (BLXNS/BXNS)"); }
+    if (sfsr & 0x20) != 0 { let _ = hprintln!("  LSPERR : lazy state preservation error"); }
+    if (sfsr & 0x80) != 0 { let _ = hprintln!("  LSERR  : lazy state error"); }
+    if sfar_valid {
+        let _ = hprintln!("  SFAR   : 0x{:08X}  <-- fault address", sfar);
+    } else {
+        let _ = hprintln!("  SFAR   : invalid (SFARVALID=0)");
+    }
     loop {}
 }
 
@@ -237,6 +249,73 @@ pub unsafe fn init_sau() {
     core::arch::asm!("dsb sy; isb sy");
 }
 
+//────────────────── MPC ──────────────────
+// AN521 DAI0521A Table 3-7 より
+// 0x5800_7000: SSRAM1 MPC（Codeメモリ 0x00000000-, NS alias 0x00100000-）
+// 0x5800_8000: SSRAM2 MPC（Expansion0  0x28000000-）
+// 0x5800_5000: 未使用領域 → Bus Error（旧コードの誤り）
+const MPC_SSRAM1_BASE: u32 = 0x5800_7000;
+const MPC_SSRAM2_BASE: u32 = 0x5800_8000;
+
+const CTRL_OFFSET:    u32 = 0x000;
+const BLK_CFG_OFFSET: u32 = 0x014;
+const BLK_IDX_OFFSET: u32 = 0x018;
+const BLK_LUT_OFFSET: u32 = 0x01C;
+
+// CTRLは触らない（デフォルト値のまま使う）
+// 誤ったビット操作がAbortの原因のため削除
+
+pub unsafe fn init_mpc() {
+    // ── NS Flash: 0x00100000 〜 0x0017FFFF (512K) ──
+    {
+        let base_mpc = MPC_SSRAM1_BASE;
+        let mem_base = 0x0010_0000u32;
+
+        let blk_cfg    = ptr::read_volatile((base_mpc + BLK_CFG_OFFSET) as *const u32);
+        let block_size = 1u32 << ((blk_cfg & 0xF) + 5);
+
+        // CTRLは変更しない
+
+        let ns_base  = 0x0010_0000u32;
+        let ns_limit = 0x0017_FFFFu32;
+
+        let start_index = (ns_base  - mem_base) / block_size / 32;
+        let end_index   = (ns_limit + 1 - mem_base) / block_size / 32;
+
+/*
+        for index in start_index..end_index {
+            ptr::write_volatile((base_mpc + BLK_IDX_OFFSET) as *mut u32, index);
+            ptr::write_volatile((base_mpc + BLK_LUT_OFFSET) as *mut u32, 0xFFFF_FFFF);
+        }
+*/
+    }
+
+    // ── NS RAM: 0x28100000 〜 0x28107FFF (32K) ──
+    {
+        let base_mpc = MPC_SSRAM2_BASE;
+        let mem_base = 0x2810_0000u32;
+
+        let blk_cfg    = ptr::read_volatile((base_mpc + BLK_CFG_OFFSET) as *const u32);
+        let block_size = 1u32 << ((blk_cfg & 0xF) + 5);
+
+        let ns_base  = 0x2810_0000u32;
+        let ns_limit = 0x2810_7FFFu32;
+
+        let start_index = (ns_base  - mem_base) / block_size / 32;
+        let end_index   = (ns_limit + 1 - mem_base) / block_size / 32;
+
+/*
+        for index in start_index..end_index {
+            ptr::write_volatile((base_mpc + BLK_IDX_OFFSET) as *mut u32, index);
+            ptr::write_volatile((base_mpc + BLK_LUT_OFFSET) as *mut u32, 0xFFFF_FFFF);
+        }
+*/
+    }
+
+    core::arch::asm!("dsb sy; isb sy");
+    let _ = hprintln!("[MPC] init done");
+}
+
 //────────────────── NS遷移 ──────────────────
 #[inline(never)]
 pub fn go_to_nonsecure() -> ! {
@@ -259,9 +338,15 @@ pub fn go_to_nonsecure() -> ! {
 
 //────────────────── main ──────────────────
 fn main() -> ! {
-    let _ = hprintln!("Hello from secure! (mps2-an521)");
+    // VTOR_S を明示的に設定（デフォルト0x0のままだとフォルト時に誤ったテーブルを参照する）
+    unsafe {
+        core::ptr::write_volatile(0xE000_ED08 as *mut u32, 0x1000_0000);
+    }
 
+    let _ = hprintln!("Hello from secure! (mps2-an521)");
+    unsafe { enable_faults(); }
     unsafe { init_sau(); }
+    unsafe { init_mpc(); }
 
     go_to_nonsecure();
 }

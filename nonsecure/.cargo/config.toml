@@ -4,6 +4,4 @@ target = "thumbv8m.main-none-eabi"
 [target.thumbv8m.main-none-eabi]
 rustflags = [
   "-C", "link-arg=--nmagic",
-  # secure側のveneerオブジェクトをリンク（SAU実装後に有効化）
-  # "-C", "link-arg=../secure/target/thumbv8m.main-none-eabi/release/veneers.o",
 ]

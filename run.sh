@@ -22,5 +22,7 @@ qemu-system-arm \
   -nographic \
   -serial mon:stdio \
   -semihosting \
+  -d int,cpu,exec,in_asm,guest_errors,mmu \
+  -D qemu_debug.log \
   -device loader,file=${SEC},addr=0x10000000 \
   -device loader,file=${NSC},addr=0x00100000
