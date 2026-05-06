@@ -240,8 +240,6 @@ pub unsafe fn init_sau() {
     let sau = &*cortex_m::peripheral::SAU::PTR;
 
     // ── Region 0: NS Flash ──────────────────────────────────────────────────
-    // AN521 Table 3-2 Row1: SSRAM1 NS alias = 0x0000_0000〜0x003F_FFFF
-    // NS World が使う Flash 領域として 0x0010_0000〜0x0017_FFFF を割り当てる。
     const NS_FLASH_BASE:  u32 = 0x0010_0000;
     const NS_FLASH_LIMIT: u32 = 0x0017_FFFF;
     sau.rnr.write(Rnr(0));
@@ -249,8 +247,6 @@ pub unsafe fn init_sau() {
     sau.rlar.write(Rlar((NS_FLASH_LIMIT & !0x1F) | 1));
 
     // ── Region 1: NS RAM ────────────────────────────────────────────────────
-    // AN521 Table 3-4 Row8: SSRAM2 NS alias = 0x2800_0000〜0x281F_FFFF
-    // NS World が使う RAM として 0x2810_0000〜0x2817_FFFF を割り当てる。
     const NS_RAM_BASE:  u32 = 0x2810_0000;
     const NS_RAM_LIMIT: u32 = 0x2817_FFFF;
     sau.rnr.write(Rnr(1));
@@ -258,8 +254,6 @@ pub unsafe fn init_sau() {
     sau.rlar.write(Rlar((NS_RAM_LIMIT & !0x1F) | 1));
 
     // ── Region 2: NSC (Non-Secure Callable) ─────────────────────────────────
-    // AN521 Table 3-2 Row6: Secure Code 領域 (CODE NSC)
-    // リンカスクリプトで .gnu.sgstubs を 0x1008_0000 に配置している想定。
     const NSC_BASE:  u32 = 0x1008_0000;
     const NSC_LIMIT: u32 = 0x1008_07FF;
     const RLAR_ENABLE: u32 = 1 << 0;
@@ -276,7 +270,6 @@ pub unsafe fn init_sau() {
     sau.rlar.write(Rlar((NS_PERIPH_LIMIT & !0x1F) | 1));
 
     // ── SAU 有効化 ──────────────────────────────────────────────────────────
-    // ENABLE=1 (bit0), ALLNS=0 (bit1)
     sau.ctrl.write(Ctrl(0x1));
     core::arch::asm!("dsb sy; isb sy");
 
@@ -294,25 +287,6 @@ pub unsafe fn init_sau() {
 }
 
 //────────────────── MPC ──────────────────
-// AN521 仕様より:
-//   SSRAM1MPC: APB interface = 0x5800_7000
-//   SSRAM2MPC: APB interface = 0x5800_8000
-//
-// BLK_CFG[3:0] からブロックサイズを動的に読み出す。
-//   block_size = 1 << (BLK_CFG[3:0] + 5)
-//   QEMU の AN521 実装では BLK_CFG=0x5 → block_size = 1 << 10 = 1024 bytes
-//
-// BLK_MAX: LUT の最終インデックス値（これを超えた書き込みは Bus Error）。
-//
-// LUT の構造:
-//   1ワード(32bit) = 32ブロック分のセキュリティ設定
-//   bit=0: Secure, bit=1: Non-secure
-//   BLK_IDX=N のとき LUT[N] は block#(N*32)〜block#(N*32+31) に対応
-//
-// LUT インデックスの計算:
-//   bytes_per_word = block_size * 32
-//   lut_word_idx   = 物理アドレスオフセット / bytes_per_word
-//
 const MPC_SSRAM1_BASE: u32 = 0x5800_7000;
 const MPC_SSRAM2_BASE: u32 = 0x5800_8000;
 
@@ -321,13 +295,6 @@ const BLK_CFG_OFFSET: u32 = 0x014;
 const BLK_IDX_OFFSET: u32 = 0x018;
 const BLK_LUT_OFFSET: u32 = 0x01C;
 
-/// MPC の LUT を NS に設定するヘルパー。
-///
-/// - `base_mpc`     : MPC の APB ベースアドレス
-/// - `mem_bus_base` : このMPCが管理するメモリの NS バスアドレス先頭
-/// - `ns_start`     : NS に設定したい範囲の先頭 NS バスアドレス
-/// - `ns_end`       : NS に設定したい範囲の末尾 NS バスアドレス（inclusive）
-/// - `label`        : ログ用ラベル
 unsafe fn mpc_set_ns_range(
     base_mpc: u32,
     mem_bus_base: u32,
@@ -335,14 +302,9 @@ unsafe fn mpc_set_ns_range(
     ns_end: u32,
     label: &str,
 ) {
-    // BLK_CFG からブロックサイズを動的取得（仕様値と実装値が乖離する場合があるため必須）
     let blk_cfg    = ptr::read_volatile((base_mpc + BLK_CFG_OFFSET) as *const u32);
     let block_size = 1u32 << ((blk_cfg & 0xF) + 5);
-
-    // BLK_MAX: LUT の有効最終インデックス。これを超えた BLK_IDX 書き込みは Bus Error。
-    let blk_max = ptr::read_volatile((base_mpc + BLK_MAX_OFFSET) as *const u32);
-
-    // 物理オフセットから LUT ワードインデックスを計算
+    let blk_max    = ptr::read_volatile((base_mpc + BLK_MAX_OFFSET) as *const u32);
     let bytes_per_word = block_size * 32;
     let start_offset   = ns_start - mem_bus_base;
     let end_offset     = ns_end   - mem_bus_base;
@@ -354,7 +316,6 @@ unsafe fn mpc_set_ns_range(
         label, block_size, blk_max, bytes_per_word, start_word, end_word
     );
 
-    // BLK_MAX を超えるインデックスへの書き込みは Bus Error → 必ずガード
     if end_word > blk_max {
         let _ = hprintln!(
             "[MPC {}] ERROR: end_word={} > BLK_MAX={}, skipping",
@@ -366,7 +327,6 @@ unsafe fn mpc_set_ns_range(
     for idx in start_word..=end_word {
         ptr::write_volatile((base_mpc + BLK_IDX_OFFSET) as *mut u32, idx);
         ptr::write_volatile((base_mpc + BLK_LUT_OFFSET) as *mut u32, 0xFFFF_FFFF);
-        // readback 確認
         ptr::write_volatile((base_mpc + BLK_IDX_OFFSET) as *mut u32, idx);
         let readback = ptr::read_volatile((base_mpc + BLK_LUT_OFFSET) as *const u32);
         if readback != 0xFFFF_FFFF {
@@ -381,40 +341,28 @@ unsafe fn mpc_set_ns_range(
 }
 
 pub unsafe fn init_mpc() {
-    // ── NS Flash: 0x0010_0000〜0x0017_FFFF ──────────────────────────────────
-    // SSRAM1 の NS バスアドレス先頭 = 0x0000_0000
-    // SAU Region0 と範囲を一致させる。
     mpc_set_ns_range(
         MPC_SSRAM1_BASE,
-        0x0000_0000,  // SSRAM1 NS バスアドレス先頭
-        0x0010_0000,  // ns_start
-        0x0017_FFFF,  // ns_end
+        0x0000_0000,
+        0x0010_0000,
+        0x0017_FFFF,
         "SSRAM1 NS-Flash",
     );
-
     core::arch::asm!("dsb sy; isb sy");
 
-    // ── NS RAM: 0x2810_0000〜0x2817_FFFF ────────────────────────────────────
-    // SSRAM2 の NS バスアドレス先頭 = 0x2800_0000 (AN521 Table 3-4 Row8)
-    // SAU Region1 と範囲を一致させる。
     mpc_set_ns_range(
         MPC_SSRAM2_BASE,
-        0x2800_0000,  // SSRAM2 NS バスアドレス先頭
-        0x2810_0000,  // ns_start
-        0x2817_FFFF,  // ns_end
+        0x2800_0000,
+        0x2810_0000,
+        0x2817_FFFF,
         "SSRAM2 NS-RAM",
     );
-
     core::arch::asm!("dsb sy; isb sy");
 
     let _ = hprintln!("[MPC] init done");
-
 }
 
 //────────────────── SPC ──────────────────
-// AN521 Table 3-35: NSCCFG (0x5008_0014)
-//   bit[0] CODENSC: CODE 領域 (0x1000_0000〜0x1FFF_FFFF) を NSC に設定
-//   AN521 Table 3-2 Row6: Secure Code 領域は "CODE NSC" → CODENSC=1 が必要
 const NSCCFG_ADDR: u32 = 0x5008_0014;
 
 pub unsafe fn init_spc() {
@@ -428,11 +376,10 @@ pub unsafe fn init_spc() {
 #[inline(never)]
 pub fn go_to_nonsecure() -> ! {
     const NONSECURE_VTOR:   u32 = 0x0010_0000;
-    const NONSECURE_VTOR_S: u32 = 0x1010_0000;
 
     let msp_ns   = unsafe { *(NONSECURE_VTOR as *const u32) };
     let reset_ns = unsafe { *((NONSECURE_VTOR + 4) as *const u32) } & !1;
-    
+
     let _ = hprintln!("[NS] msp_ns=0x{:08X} reset_ns=0x{:08X}", msp_ns, reset_ns);
 
     unsafe {
@@ -447,6 +394,216 @@ pub fn go_to_nonsecure() -> ! {
     }
 }
 
+//────────────────── メモリ設定ダンプ＋検証 ──────────────────
+
+/// TT命令で1アドレス分の情報を取得する構造体
+struct TtResult {
+    addr:      u32,
+    s:         u32, // bit22: Secure=1
+    srvalid:   u32, // bit17: SAU regionが有効
+    sregion:   u32, // bit15:8: SAU region番号
+    nsc:       u32, // SAU RLAR bit1: NSC（SAUレジスタから取得）
+}
+
+/// TT / TTT 命令を実行してTtResultを返す。
+/// NSCビットはSAUレジスタ(RLAR)から直接読む。
+unsafe fn read_tt(addr: u32) -> TtResult {
+    const SAU_RNR:  *mut u32 = 0xE000_EDD8 as *mut u32;
+    const SAU_RLAR: *mut u32 = 0xE000_EDE0 as *mut u32;
+
+    let tt_result: u32;
+    core::arch::asm!(
+        "tt {result}, {addr}",
+        result = out(reg) tt_result,
+        addr   = in(reg)  addr,
+    );
+
+    let s       = (tt_result >> 22) & 1;
+    let srvalid = (tt_result >> 17) & 1;
+    let sregion = (tt_result >>  8) & 0xFF;
+
+    // NSCビット: SAUリージョンが有効な場合のみRLARから取得
+    let nsc = if srvalid == 1 {
+        ptr::write_volatile(SAU_RNR, sregion);
+        core::arch::asm!("dsb sy; isb sy");
+        let rlar = ptr::read_volatile(SAU_RLAR);
+        (rlar >> 1) & 1
+    } else {
+        0
+    };
+
+    TtResult { addr, s, srvalid, sregion, nsc }
+}
+
+/// 期待値定義
+struct Expected {
+    addr:    u32,
+    s:       u32,
+    srvalid: u32,
+    nsc:     u32,
+    label:   &'static str,
+}
+
+/// SAU CTRL を読み出してダンプ
+unsafe fn dump_sau_ctrl() {
+    const SAU_CTRL: *mut u32 = 0xE000_EDD0 as *mut u32;
+    let ctrl = ptr::read_volatile(SAU_CTRL);
+    let _ = hprintln!("[SAU] CTRL=0x{:08X}", ctrl);
+}
+
+/// SAU 全リージョンをダンプ
+unsafe fn dump_sau_regions() {
+    const SAU_RNR:  *mut u32 = 0xE000_EDD8 as *mut u32;
+    const SAU_RBAR: *mut u32 = 0xE000_EDDC as *mut u32;
+    const SAU_RLAR: *mut u32 = 0xE000_EDE0 as *mut u32;
+
+    for r in 0..4u32 {
+        ptr::write_volatile(SAU_RNR, r);
+        core::arch::asm!("dsb sy; isb sy");
+        let rbar = ptr::read_volatile(SAU_RBAR);
+        let rlar = ptr::read_volatile(SAU_RLAR);
+        let _ = hprintln!(
+            "[SAU] region={} RBAR=0x{:08X} RLAR=0x{:08X} EN={} NSC={}",
+            r, rbar, rlar, rlar & 1, (rlar >> 1) & 1
+        );
+    }
+}
+
+/// 全アドレスのTT結果をダンプ（検証なし）
+unsafe fn dump_tt_results() {
+    const ADDRS: &[u32] = &[
+        0x0010_0000,
+        0x0017_FFFF,
+        0x1000_0000,
+        0x1000_062A,
+        0x1008_0000,
+        0x1008_07FF,
+        0x2810_0000,
+        0x2817_FFFF,
+        0x4000_0000,
+    ];
+
+    for &addr in ADDRS {
+        let tt_result: u32;
+        let ttt_result: u32;
+        core::arch::asm!(
+            "tt {result}, {addr}",
+            result = out(reg) tt_result,
+            addr   = in(reg)  addr,
+        );
+        core::arch::asm!(
+            "ttt {result}, {addr}",
+            result = out(reg) ttt_result,
+            addr   = in(reg)  addr,
+        );
+        let s        = (tt_result >> 22) & 1;
+        let srvalid  = (tt_result >> 17) & 1;
+        let sregion  = (tt_result >>  8) & 0xFF;
+        let irvalid  = (tt_result >> 23) & 1;
+        let iregion  = (tt_result >> 24) & 0xFF;
+        let ttt_s       = (ttt_result >> 22) & 1;
+        let ttt_srvalid = (ttt_result >> 17) & 1;
+        let ttt_sregion = (ttt_result >>  8) & 0xFF;
+
+        let _ = hprintln!(
+            "addr=0x{:08X}  TT: S={} SAUregion={} (valid={}) IDAUregion={} (valid={})  TTT: S={} SAUregion={} (valid={})",
+            addr, s, sregion, srvalid, iregion, irvalid,
+            ttt_s, ttt_sregion, ttt_srvalid
+        );
+    }
+}
+
+/// 設定前ダンプのみ（検証なし）
+fn dump_memory_setting_before() {
+    let _ = hprintln!("[DUMP] SAU/TT state (before init)");
+    unsafe {
+        dump_sau_ctrl();
+        dump_sau_regions();
+        dump_tt_results();
+    }
+}
+
+/// 設定後ダンプ＋TT命令による期待値検証。
+/// 不一致があれば hprintln! でエラーを出力し loop{} で停止。
+fn dump_memory_setting_after() {
+    let _ = hprintln!("[DUMP] SAU/TT state (after init)");
+    unsafe {
+        dump_sau_ctrl();
+        dump_sau_regions();
+        dump_tt_results();
+    }
+    verify_memory_settings();
+}
+
+/// TT命令結果を期待値テーブルと照合して検証する。
+/// エラー検出時は hprintln! 出力後に loop{} で停止。
+fn verify_memory_settings() {
+    // ログから導出した期待値テーブル
+    // NSCアドレスはSecureコンテキストからTTを打つためS=1のまま。
+    // NSCビットはSAU RLARから読んで判定する。
+    const EXPECTED: &[Expected] = &[
+        Expected { addr: 0x0010_0000, s: 0, srvalid: 1, nsc: 0, label: "NS Flash (head)" },
+        Expected { addr: 0x0017_FFFF, s: 0, srvalid: 1, nsc: 0, label: "NS Flash (tail)" },
+        Expected { addr: 0x1000_0000, s: 1, srvalid: 0, nsc: 0, label: "Secure Code" },
+        Expected { addr: 0x1000_062A, s: 1, srvalid: 0, nsc: 0, label: "Secure Code (entry)" },
+        Expected { addr: 0x1008_0000, s: 1, srvalid: 1, nsc: 1, label: "NSC (head)" },
+        Expected { addr: 0x1008_07FF, s: 1, srvalid: 1, nsc: 1, label: "NSC (tail)" },
+        Expected { addr: 0x2810_0000, s: 0, srvalid: 1, nsc: 0, label: "NS RAM (head)" },
+        Expected { addr: 0x2817_FFFF, s: 0, srvalid: 1, nsc: 0, label: "NS RAM (tail)" },
+        Expected { addr: 0x4000_0000, s: 0, srvalid: 1, nsc: 0, label: "NS Periph" },
+    ];
+
+    let _ = hprintln!("[VERIFY] start memory settings verification");
+
+    let mut has_error = false;
+
+    for exp in EXPECTED {
+        let got = unsafe { read_tt(exp.addr) };
+
+        let s_ok       = got.s       == exp.s;
+        let srvalid_ok = got.srvalid == exp.srvalid;
+        let nsc_ok     = got.nsc     == exp.nsc;
+
+        if s_ok && srvalid_ok && nsc_ok {
+            let _ = hprintln!(
+                "[VERIFY] OK   addr=0x{:08X} ({}) S={} SRVALID={} NSC={}",
+                exp.addr, exp.label, got.s, got.srvalid, got.nsc
+            );
+        } else {
+            has_error = true;
+            let _ = hprintln!(
+                "[VERIFY] ERROR addr=0x{:08X} ({})",
+                exp.addr, exp.label
+            );
+            if !s_ok {
+                let _ = hprintln!(
+                    "  S       : got={} expected={}",
+                    got.s, exp.s
+                );
+            }
+            if !srvalid_ok {
+                let _ = hprintln!(
+                    "  SRVALID : got={} expected={}",
+                    got.srvalid, exp.srvalid
+                );
+            }
+            if !nsc_ok {
+                let _ = hprintln!(
+                    "  NSC     : got={} expected={}",
+                    got.nsc, exp.nsc
+                );
+            }
+        }
+    }
+
+    if has_error {
+        let _ = hprintln!("[VERIFY] FAILED: memory setting verification failed. halting.");
+        loop {}
+    } else {
+        let _ = hprintln!("[VERIFY] PASSED: all memory settings verified.");
+    }
+}
+
 //────────────────── main ──────────────────
 fn main() -> ! {
     unsafe {
@@ -456,85 +613,18 @@ fn main() -> ! {
     let _ = hprintln!("Hello from secure! (mps2-an521)");
     unsafe { enable_faults(); }
 
-    hprintln!("\nBefore initialize memory");
-    check_memory();
+    let _ = hprintln!("\nBefore initialize memory");
+    dump_memory_setting_before();  // ダンプのみ、検証なし
 
     // 初期化順序: SPC → MPC → SAU
     unsafe { init_spc(); }
     unsafe { init_mpc(); }
     unsafe { init_sau(); }
 
-    hprintln!("\nAfter initialize memory");
-    check_memory();
+    let _ = hprintln!("\nAfter initialize memory");
+    dump_memory_setting_after();   // ダンプ＋検証
 
     go_to_nonsecure();
-}
-
-fn check_memory() {
-    unsafe {
-        const SAU_RNR:  *mut u32 = 0xE000_EDD8 as *mut u32;
-        const SAU_RBAR: *mut u32 = 0xE000_EDDC as *mut u32;
-        const SAU_RLAR: *mut u32 = 0xE000_EDE0 as *mut u32;
-        const SAU_CTRL: *mut u32 = 0xE000_EDD0 as *mut u32;
-
-        let ctrl = ptr::read_volatile(SAU_CTRL);
-        let _ = hprintln!("[SAU] CTRL=0x{:08X}", ctrl);
-
-        for r in 0..4u32 {
-            ptr::write_volatile(SAU_RNR, r);
-            core::arch::asm!("dsb sy; isb sy");
-            let rbar = ptr::read_volatile(SAU_RBAR);
-            let rlar = ptr::read_volatile(SAU_RLAR);
-            let _ = hprintln!(
-                "[SAU] region={} RBAR=0x{:08X} RLAR=0x{:08X} EN={} NSC={}",
-                r, rbar, rlar, rlar & 1, (rlar >> 1) & 1
-            );
-        }
-
-        let addrs: &[u32] = &[
-            0x0010_0000,
-            0x0017_FFFF,
-            0x1000_0000,
-            0x1000_062A,
-            0x1008_0000,
-            0x1008_07FF,
-            0x2810_0000,
-            0x2817_FFFF,
-            0x4000_0000,
-        ];
-
-        for &addr in addrs {
-            let tt_result: u32;
-            let ttt_result: u32;
-
-            core::arch::asm!(
-                "tt {result}, {addr}",
-                result = out(reg) tt_result,
-                addr   = in(reg)  addr,
-            );
-            core::arch::asm!(
-                "ttt {result}, {addr}",
-                result = out(reg) ttt_result,
-                addr   = in(reg)  addr,
-            );
-
-            let s        = (tt_result >> 22) & 1;
-            let srvalid  = (tt_result >> 17) & 1;
-            let sregion  = (tt_result >>  8) & 0xFF;
-            let irvalid  = (tt_result >> 23) & 1;
-            let iregion  = (tt_result >> 24) & 0xFF;
-
-            let ttt_s       = (ttt_result >> 22) & 1;
-            let ttt_srvalid = (ttt_result >> 17) & 1;
-            let ttt_sregion = (ttt_result >>  8) & 0xFF;
-
-            let _ = hprintln!(
-                "addr=0x{:08X}  TT: S={} SAUregion={} (valid={}) IDAUregion={} (valid={})  TTT: S={} SAUregion={} (valid={})",
-                addr, s, sregion, srvalid, iregion, irvalid,
-                ttt_s, ttt_sregion, ttt_srvalid
-            );
-        }
-    }
 }
 
 //────────────────── panic ──────────────────
